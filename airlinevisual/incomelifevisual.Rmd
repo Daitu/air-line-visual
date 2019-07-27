@@ -1,0 +1,144 @@
+---
+title: "R可视化各国收入和寿命的关系"
+output:
+  html_document:
+    df_print: paged
+---
+
+## 基于R的各国收入和寿命关系可视化
+
+
+```{r}
+## 加载库
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(RColorBrewer)
+library(gganimate)
+library(readxl)
+library(rworldmap)
+library(zoo)
+library(RColorBrewer)
+```
+
+## 读取数据
+
+```{r}
+## 读取数据，数据融合
+gdpdata <- read_excel("indicator gapminder gdp_per_capita_ppp.xlsx",sheet = "Data")
+popudata <- read_excel("indicator gapminder population.xlsx",sheet = "Data")
+lifedata <- read_excel("indicator life_expectancy_at_birth.xlsx",sheet = "Data")
+```
+
+## 数据与处理
+
+```{r}
+
+## 查看一共有多少个国家
+Countrydata <- data.frame(Country = unique(gdpdata$`GDP per capita`),stringsAsFactors=FALSE)
+## 得出每个国家所属的洲
+malMap <- joinCountryData2Map(Countrydata, joinCode = "NAME",
+                              nameJoinColumn = "Country")
+
+CRdata <- data.frame(Country = as.character(malMap$NAME),
+                     Region = as.character(malMap$REGION),
+                     stringsAsFactors=FALSE)
+
+## 连接数据,一共得到188个国家的数据
+CounRegion <- left_join(Countrydata,CRdata,by = "Country")
+CounRegion <- CounRegion[!is.na(CounRegion$Region),]
+nrow(CounRegion)
+
+## 宽数据转化为长数据
+Gdpdata <- tidyr::gather(gdpdata,key="Year",value="income",2:217)
+colnames(Gdpdata) <- c("Country","Year","income")
+Gdpdata$Year <- as.integer(Gdpdata$Year)
+population <- tidyr::gather(popudata,key="Year",value="Number",2:82)
+colnames(population) <- c("Country","Year","Number")
+population$Year <- as.integer(population$Year)
+Lifedata <- tidyr::gather(lifedata[,1:217],key="Year",value="life",2:217)
+colnames(Lifedata) <- c("Country","Year","life")
+Lifedata$Year <- as.integer(Lifedata$Year)
+## 数据连接
+GPdata <- left_join(Gdpdata,population,by = c("Country", "Year"))
+GPLdata <- left_join(GPdata,Lifedata,by = c("Country", "Year"))
+GPLRdata <- left_join(GPLdata,CounRegion,by = "Country")
+## 剔除Region为缺失值得数据
+GPLRdata <- GPLRdata[!is.na(GPLRdata$Region),]
+
+colnames(GPLRdata)
+
+## 针对人口数据，使用前一个值来填补缺失值
+GPLRdata <- GPLRdata%>%group_by(Country, Year)%>%
+  arrange(.by_group = TRUE) %>%
+  data.frame()%>%
+  mutate(Number2 = na.locf(Number))
+
+
+head(GPLRdata)
+```
+
+## 可视化散点图
+
+```{r}
+
+plotdata <- GPLRdata[GPLRdata$Year== 2001,]
+
+ggplot(plotdata,aes(x=income,y=life,colour=Region))+
+  theme_bw()+
+  geom_point(aes(size=Number2 / 1e8),alpha = 0.8)+
+  scale_color_brewer(palette = "Set1")+
+  theme(legend.position = "bottom")
+
+```
+
+## 将每个洲得数据分开
+
+```{r}
+
+ggplot(plotdata,aes(x=income,y=life,colour=Region))+
+  theme_bw()+
+  geom_point(aes(size=Number2 / 1e8),alpha = 0.8)+
+  scale_color_brewer(palette = "Set1")+
+  facet_wrap(.~Region)+
+  theme(legend.position = "bottom")
+
+
+```
+
+## 动态散点图1
+
+```{r}
+
+ggplot(GPLRdata,aes(x=income,y=life,colour=Region,size=Number2 / 1e8))+
+  theme_bw()+
+  geom_point(na.rm = TRUE)+
+  scale_color_brewer(palette = "Set1")+
+  theme(legend.position = "bottom")+
+  transition_time(Year) +
+  labs(title = "Year: {frame_time}")+
+  ease_aes("linear")
+  
+  
+```
+
+## 动态散点图2
+
+```{r}
+
+ggplot(GPLRdata,aes(x=income,y=life,colour=Region,size=Number2 / 1e8))+
+  theme_bw()+
+  geom_point(na.rm = TRUE,show.legend = FALSE)+
+  scale_color_brewer(palette = "Set1")+
+  facet_wrap(.~Region,nrow = 3)+
+  transition_time(Year) +
+  labs(title = "Year: {frame_time}")+
+  ease_aes("linear")
+  
+  
+```
+
+
+
+
+
